@@ -19,7 +19,7 @@
 
 // LOOK-1.2 - change this to adjust particle count in the simulation
 const int N_FOR_VIS = 5000;
-const float DT = 0.2f;
+const float DT = 1.0f; // default 0.2
 
 /**
 * C main function.
@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
 //-------------------------------
 
 std::string deviceName;
-GLFWwindow *window;
+GLFWwindow* window;
 
 /**
 * Initialization of CUDA and GLFW.
@@ -63,6 +63,7 @@ bool init(int argc, char **argv) {
   int major = deviceProp.major;
   int minor = deviceProp.minor;
 
+  // just another way to construct string
   std::ostringstream ss;
   ss << projectName << " [SM " << major << "." << minor << " " << deviceProp.name << "]";
   deviceName = ss.str();
@@ -120,13 +121,18 @@ bool init(int argc, char **argv) {
   return true;
 }
 
+// Vertex Array Object
 void initVAO() {
-
   std::unique_ptr<GLfloat[]> bodies{ new GLfloat[4 * (N_FOR_VIS)] };
+  // bin indices
   std::unique_ptr<GLuint[]> bindices{ new GLuint[N_FOR_VIS] };
 
   glm::vec4 ul(-1.0, -1.0, 1.0, 1.0);
   glm::vec4 lr(1.0, 1.0, 0.0, 0.0);
+  // UL---UR
+  // |     |
+  // |     |
+  // LL---LR
 
   for (int i = 0; i < N_FOR_VIS; i++) {
     bodies[4 * i + 0] = 0.0f;
@@ -136,10 +142,10 @@ void initVAO() {
     bindices[i] = i;
   }
 
-
   glGenVertexArrays(1, &boidVAO); // Attach everything needed to draw a particle to this
   glGenBuffers(1, &boidVBO_positions);
   glGenBuffers(1, &boidVBO_velocities);
+  // index buffer object
   glGenBuffers(1, &boidIBO);
 
   glBindVertexArray(boidVAO);
@@ -188,9 +194,9 @@ void initShaders(GLuint * program) {
     // No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not
     // use this buffer
 
-    float4 *dptr = NULL;
-    float *dptrVertPositions = NULL;
-    float *dptrVertVelocities = NULL;
+    float4* dptr = NULL;
+    float* dptrVertPositions = NULL;
+    float* dptrVertVelocities = NULL;
 
     cudaGLMapBufferObject((void**)&dptrVertPositions, boidVBO_positions);
     cudaGLMapBufferObject((void**)&dptrVertVelocities, boidVBO_velocities);

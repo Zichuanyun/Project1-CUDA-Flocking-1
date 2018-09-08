@@ -138,6 +138,8 @@ __global__ void kernGenerateRandomPosArray(int time, int N, glm::vec3 * arr, flo
 */
 void Boids::initSimulation(int N) {
   numObjects = N;
+  // fullBlocksPerGrid, 1, 1
+  // (5000 + 128 - 1) / 128
   dim3 fullBlocksPerGrid((N + blockSize - 1) / blockSize);
 
   // LOOK-1.2 - This is basic CUDA memory management and error checking.
@@ -147,7 +149,7 @@ void Boids::initSimulation(int N) {
 
   cudaMalloc((void**)&dev_vel1, N * sizeof(glm::vec3));
   checkCUDAErrorWithLine("cudaMalloc dev_vel1 failed!");
-
+     
   cudaMalloc((void**)&dev_vel2, N * sizeof(glm::vec3));
   checkCUDAErrorWithLine("cudaMalloc dev_vel2 failed!");
 
@@ -229,29 +231,70 @@ void Boids::copyBoidsToVBO(float *vbodptr_positions, float *vbodptr_velocities) 
 * Compute the new velocity on the body with index `iSelf` due to the `N` boids
 * in the `pos` and `vel` arrays.
 */
-__device__ glm::vec3 computeVelocityChange(int N, int iSelf, const glm::vec3 *pos, const glm::vec3 *vel) {
+__device__ glm::vec3 computeVelocityChange(int N, int iSelf, const glm::vec3* pos, const glm::vec3* vel) {
   // Rule 1: boids fly towards their local perceived center of mass, which excludes themselves
   // Rule 2: boids try to stay a distance d away from each other
   // Rule 3: boids try to match the speed of surrounding boids
-  return glm::vec3(0.0f, 0.0f, 0.0f);
+  glm::vec3 output_vel{ 0.0f };
+  glm::vec3 my_pos{ pos[iSelf] };
+  glm::vec3 perceived_center{ 0.0f };
+  glm::vec3 keep_distance{ 0.0f };
+  glm::vec3 perceived_vel{ 0.0f };
+
+
+  for (int i = 0; i < N; ++i) {
+    if (i != iSelf) {
+      glm::vec3 other_pos = pos[i];
+      float dis = glm::distance(other_pos, my_pos);
+      // rule 1
+      if (dis < rule1Distance) {
+        perceived_center += other_pos;
+      }
+      
+      // rule 2
+      if (dis < rule2Distance) {
+        keep_distance -= other_pos - my_pos;
+      }
+
+      // rule 3
+      if (dis < rule3Distance) {
+        perceived_vel += vel[i];
+      }
+    }
+  }
+  perceived_center /= N - 1;
+  perceived_vel /= N - 1;
+  output_vel += (perceived_center - my_pos) * rule1Scale
+              + keep_distance * rule2Scale
+              + perceived_vel * rule3Scale;
+  
+  return output_vel;
 }
 
 /**
 * TODO-1.2 implement basic flocking
 * For each of the `N` bodies, update its position based on its current velocity.
 */
-__global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
-  glm::vec3 *vel1, glm::vec3 *vel2) {
+__global__ void kernUpdateVelocityBruteForce(int N, glm::vec3* pos,
+  glm::vec3* vel1, glm::vec3* vel2) {
   // Compute a new velocity based on pos and vel1
   // Clamp the speed
   // Record the new velocity into vel2. Question: why NOT vel1?
+  // Becasue updating vel1 will affect other thread
+
+  // calc idx
+  int idx = gridDim.x * blockIdx.x + threadIdx.x;
+
+  // calc v2
+  glm::vec3 new_v = computeVelocityChange(N, idx, pos, vel1);
+  vel2[idx] = new_v;
 }
 
 /**
 * LOOK-1.2 Since this is pretty trivial, we implemented it for you.
 * For each of the `N` bodies, update its position based on its current velocity.
 */
-__global__ void kernUpdatePos(int N, float dt, glm::vec3 *pos, glm::vec3 *vel) {
+__global__ void kernUpdatePos(int N, float dt, glm::vec3* pos, glm::vec3* vel) {
   // Update position by velocity
   int index = threadIdx.x + (blockIdx.x * blockDim.x);
   if (index >= N) {
@@ -349,6 +392,19 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
 void Boids::stepSimulationNaive(float dt) {
   // TODO-1.2 - use the kernels you wrote to step the simulation forward in time.
   // TODO-1.2 ping-pong the velocity buffers
+  dim3 fullBlocksPerGrid((numObjects + blockSize - 1) / blockSize);
+
+  kernUpdateVelocityBruteForce<<<fullBlocksPerGrid, threadsPerBlock>>>(numObjects, dev_pos, dev_vel1, dev_vel2);
+  checkCUDAErrorWithLine("kernUpdateVelocityBruteForce failed!");
+
+  cudaMemcpy(dev_vel1, dev_vel2, sizeof(glm::vec3) * numObjects, cudaMemcpyDeviceToDevice);
+  checkCUDAErrorWithLine("dev_vel2 to dev_vel1 copy failed!");
+
+  kernUpdatePos<<<fullBlocksPerGrid, threadsPerBlock>>>(numObjects, dt, dev_pos, dev_vel1);
+  checkCUDAErrorWithLine("kernUpdatePos failed!");
+
+
+
 }
 
 void Boids::stepSimulationScatteredGrid(float dt) {
@@ -396,10 +452,11 @@ void Boids::unitTest() {
   // LOOK-1.2 Feel free to write additional tests here.
 
   // test unstable sort
-  int *dev_intKeys;
-  int *dev_intValues;
+  int* dev_intKeys;
+  int* dev_intValues;
   int N = 10;
 
+  // TODO check {}
   std::unique_ptr<int[]>intKeys{ new int[N] };
   std::unique_ptr<int[]>intValues{ new int[N] };
 
@@ -420,6 +477,7 @@ void Boids::unitTest() {
   cudaMalloc((void**)&dev_intValues, N * sizeof(int));
   checkCUDAErrorWithLine("cudaMalloc dev_intValues failed!");
 
+  // 1, 1, 1
   dim3 fullBlocksPerGrid((N + blockSize - 1) / blockSize);
 
   std::cout << "before unstable sort: " << std::endl;
