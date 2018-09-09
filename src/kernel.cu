@@ -366,7 +366,7 @@ __global__ void kernComputeIndices(int N, int gridResolution,
     // - Set up a parallel array of integer indices as pointers to the actual
     //   boid data in pos and vel1/vel2
   int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
-  if (idx < N) {
+  if (idx >= N) {
     return;
   }
   indices[idx] = idx;
@@ -376,7 +376,7 @@ __global__ void kernComputeIndices(int N, int gridResolution,
   int y = (int)((my_pos.y - gridMin.y) * inverseCellWidth);
   int z = (int)((my_pos.z - gridMin.z) * inverseCellWidth);
   gridIndices[idx] = gridIndex3Dto1D(x, y, z, gridResolution);
-  // TODO(zichuanyu) do a debug to check correctness after finish
+  // DONE
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
