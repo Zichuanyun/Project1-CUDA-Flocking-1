@@ -157,7 +157,7 @@ void Boids::initSimulation(int N) {
 
   // LOOK-1.2 - This is a typical CUDA kernel invocation.
   kernGenerateRandomPosArray<<<fullBlocksPerGrid, blockSize>>>(1, numObjects,
-    dev_pos, scene_scale);
+                                                               dev_pos, scene_scale);
   checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
   // LOOK-2.1 computing grid params
@@ -395,7 +395,7 @@ __global__ void kernIdentifyCellStartEnd(int N, int* particleGridIndices,
   // Identify the start point of each cell in the gridIndices array.
   // This is basically a parallel unrolling of a loop that goes
   // "this index doesn't match the one before it, must be a new cell!"
-  int idx = blockDim.x * bolckIdx.x + threadIdx.x;
+  int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (idx >= N) {
     return;
   }
