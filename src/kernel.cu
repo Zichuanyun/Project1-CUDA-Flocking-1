@@ -226,8 +226,8 @@ __global__ void kernCopyVelocitiesToVBO(int N, glm::vec3 *vel, float *vbo, float
 void Boids::copyBoidsToVBO(float *vbodptr_positions, float *vbodptr_velocities) {
   dim3 fullBlocksPerGrid((numObjects + blockSize - 1) / blockSize);
 
-  kernCopyPositionsToVBO << <fullBlocksPerGrid, blockSize >> >(numObjects, dev_pos, vbodptr_positions, scene_scale);
-  kernCopyVelocitiesToVBO << <fullBlocksPerGrid, blockSize >> >(numObjects, dev_vel1, vbodptr_velocities, scene_scale);
+  kernCopyPositionsToVBO <<<fullBlocksPerGrid, blockSize >>>(numObjects, dev_pos, vbodptr_positions, scene_scale);
+  kernCopyVelocitiesToVBO <<<fullBlocksPerGrid, blockSize >>>(numObjects, dev_vel1, vbodptr_velocities, scene_scale);
 
   checkCUDAErrorWithLine("copyBoidsToVBO failed!");
 
@@ -354,6 +354,7 @@ __global__ void kernUpdatePos(int N, float dt, glm::vec3* pos, glm::vec3* vel) {
 //          for(x)
 //            for(y)
 //             for(z)? Or some other order?
+// z->y->x, because x is increamented by 1
 __device__ int gridIndex3Dto1D(int x, int y, int z, int gridResolution) {
   return x + y * gridResolution + z * gridResolution * gridResolution;
 }
@@ -388,12 +389,32 @@ __global__ void kernResetIntBuffer(int N, int* intBuffer, int value) {
   }
 }
 
-__global__ void kernIdentifyCellStartEnd(int N, int *particleGridIndices,
-  int *gridCellStartIndices, int *gridCellEndIndices) {
+__global__ void kernIdentifyCellStartEnd(int N, int* particleGridIndices,
+  int* gridCellStartIndices, int* gridCellEndIndices) {
   // TODO-2.1
   // Identify the start point of each cell in the gridIndices array.
   // This is basically a parallel unrolling of a loop that goes
   // "this index doesn't match the one before it, must be a new cell!"
+  int idx = blockDim.x * bolckIdx.x + threadIdx.x;
+  if (idx >= N) {
+    return;
+  }
+
+  if (idx == 0) {
+    gridCellStartIndices[particleGridIndices[0]] = 0;
+  } else {
+    if (particleGridIndices[idx] != particleGridIndices[idx]) {
+      gridCellStartIndices[particleGridIndices[idx]] = idx;
+    }
+  }
+
+  if (idx == N - 1) {
+    gridCellStartIndices[particleGridIndices[idx]] = idx;
+  } else {
+    if (particleGridIndices[idx] != particleGridIndices[idx + 1]) {
+      gridCellEndIndices[particleGridIndices[idx]] = idx;
+    }
+  }
 }
 
 __global__ void kernUpdateVelNeighborSearchScattered(
@@ -477,8 +498,58 @@ void Boids::stepSimulationScatteredGrid(float dt) {
                                                               dev_pos,
                                                               dev_particleArrayIndices,
                                                               dev_particleGridIndices);
+  checkCUDAErrorWithLine("kernComputeIndices failed!");
 
+  // init thrust pointer, and sort
+  dev_thrust_particleArrayIndices = thrust::device_pointer_cast(dev_particleArrayIndices);
+  dev_thrust_particleGridIndices = thrust::device_pointer_cast(dev_particleGridIndices);
+  thrust::sort_by_key(dev_thrust_particleGridIndices,
+                      dev_thrust_particleGridIndices + numObjects,
+                      dev_thrust_particleArrayIndices);
+  checkCUDAErrorWithLine("sort_by_key on dev_thrust_particleGridIndices failed!");
 
+  // check if sorting is succesful, debugging use
+  /*std::unique_ptr<int[]>checkArrayIndices{ new int[numObjects] };
+  std::unique_ptr<int[]>checkGridIndices{ new int[numObjects] };
+  cudaMemcpy(checkArrayIndices.get(), dev_particleArrayIndices,
+             numObjects * sizeof(int), cudaMemcpyDeviceToHost);
+  cudaMemcpy(checkGridIndices.get(), dev_particleGridIndices,
+             numObjects * sizeof(int), cudaMemcpyDeviceToHost);
+  for (int i = 0; i < numObjects; ++i) {
+    std::cout << checkArrayIndices[i] << std::endl;
+  }
+  for (int i = 0; i < numObjects; ++i) {
+    std::cout << checkGridIndices[i] << std::endl;
+  }*/
+
+  // calc start and end index
+  // before calc, set to -1, other wise emtpy cell will be set to 0
+  kernResetIntBuffer<<<fullBlocksPerGrid, threadsPerBlock>>>(gridCellCount,
+                                                             dev_gridCellStartIndices, -1);
+  checkCUDAErrorWithLine("init dev_gridCellStartIndices to -1 failed!");
+  kernResetIntBuffer<<<fullBlocksPerGrid, threadsPerBlock>>>(gridCellCount,
+                                                             dev_gridCellEndIndices, -1);
+  checkCUDAErrorWithLine("init dev_gridCellEndIndices to -1 failed!");
+  // check if start/end success
+  kernIdentifyCellStartEnd<<<fullBlocksPerGrid, threadsPerBlock>>>(numObjects,
+                                                                   dev_particleGridIndices,
+                                                                   dev_gridCellStartIndices,
+                                                                   dev_gridCellEndIndices);
+  checkCUDAErrorWithLine("kernIdentifyCellStartEnd failed!");
+  // test if calc start/end right
+  std::unique_ptr<int[]>check_gridCellStartIndices{ new int[gridCellCount] };
+  std::unique_ptr<int[]>check_gridCellEndIndices{ new int[gridCellCount] };
+  cudaMemcpy(check_gridCellStartIndices.get(), dev_gridCellStartIndices,
+    gridCellCount * sizeof(int), cudaMemcpyDeviceToHost);
+  cudaMemcpy(check_gridCellEndIndices.get(), dev_gridCellEndIndices,
+    gridCellCount * sizeof(int), cudaMemcpyDeviceToHost);
+  for (int i = 0; i < numObjects; ++i) {
+  std::cout << check_gridCellStartIndices[i] << std::endl;
+  }
+  for (int i = 0; i < numObjects; ++i) {
+  std::cout << check_gridCellEndIndices[i] << std::endl;
+  }
+  int a = 0;
 }
 
 void Boids::stepSimulationCoherentGrid(float dt) {
