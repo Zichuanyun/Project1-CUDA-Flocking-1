@@ -15,6 +15,8 @@ Project 1 - Flocking**
 
 ### Change number of boids, with visualization
 
+![fps_with_visualization]("images/FPS%20with%20visualization.png")
+
 ### Change number of boids, without visualization
 
 ### Fix number of boids, change block size, without visualization
