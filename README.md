@@ -27,5 +27,19 @@ Project 1 - Flocking**
 
 ## Questions
 
+### For each implementation, how does changing the number of boids affect performance? Why do you think this is?
 
+Yes. The two advanced methoeds have much better preformance. Because we are saving a lot of unnecessary checkings. The larger the number of boids, the more we save.
+
+### For each implementation, how does changing the block count and block size affect performance? Why do you think this is?
+
+When the block size is small, the performance is not good. When it is larger or equal to 32, the performance is largely improved and doesn't change much as we increase the block size. Not sure why this happens. **Maybe** related to wrap size.
+
+### For the coherent uniform grid: did you experience any performance improvements with the more coherent uniform grid? Was this the outcome you expected? Why or why not?
+
+I experience much performance improvements with it. Because when we use scattered memeory method, why are accessing a random memeory place everytime we need to check a neigboring boids. Yet in coherent method, we only do this once when we shuffle the pos and vel.
+
+### Did changing cell width and checking 27 vs 8 neighboring cells affect performance? Why or why not? Be careful: it is insufficient (and possibly incorrect) to say that 27-cell is slower simply because there are more cells to check!
+
+When the number of boids becomes large, int 27 cells' case though we check more neighbors, the actuall boids we need to iterate through is actually less, so the performance is better.
 
