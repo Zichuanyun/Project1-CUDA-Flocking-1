@@ -11,6 +11,10 @@ Project 1 - Flocking**
 
 ![result](images/static.png)
 
+### GIF
+
+![result](images/motion.gif)
+
 ## Performance Analysis
 
 ### Change number of boids, with visualization
