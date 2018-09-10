@@ -9,7 +9,7 @@ Project 1 - Flocking**
 
 ### Static
 
-### Gif
+![result](images/static.png)
 
 ## Performance Analysis
 
