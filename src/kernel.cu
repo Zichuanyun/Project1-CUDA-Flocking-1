@@ -610,12 +610,14 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   }
   glm::vec3 my_pos{ pos[idx] };
   // calc cell id
+
   float positive_x = my_pos.x - gridMin.x;
   float positive_y = my_pos.y - gridMin.y;
   float positive_z = my_pos.z - gridMin.z;
   int cell_x = (int)(positive_x * inverseCellWidth);
   int cell_y = (int)(positive_y * inverseCellWidth);
   int cell_z = (int)(positive_z * inverseCellWidth);
+#if 0
   // o_ for offset
   int o_x = 1;
   int o_y = 1;
@@ -623,6 +625,7 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   if ((float)(positive_x - cell_x * cellWidth) < cellWidth / (float)2) o_x = -1;
   if ((float)(positive_y - cell_y * cellWidth) < cellWidth / (float)2) o_y = -1;
   if ((float)(positive_z - cell_z * cellWidth) < cellWidth / (float)2) o_z = -1;
+
 
   int check_cells[8];
   check_cells[0] = getCellId(cell_x, cell_y, cell_z, gridResolution);
@@ -633,7 +636,18 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   check_cells[5] = getCellId(cell_x + o_x, cell_y, cell_z + o_z, gridResolution);
   check_cells[6] = getCellId(cell_x + o_x, cell_y + o_y, cell_z, gridResolution);
   check_cells[7] = getCellId(cell_x + o_x, cell_y + o_y, cell_z + o_z, gridResolution);
-
+#else
+  int check_cells[27];
+  int temp_count = 0;
+  for (int i = -1; i <= 1; ++i) {
+    for (int j = -1; j <= 1; ++j) {
+      for (int k = -1; k <= 1; ++k) {
+        check_cells[temp_count] = getCellId(cell_x + i, cell_y + j, cell_z + k, gridResolution);
+        ++temp_count;
+      }
+    }
+  }
+#endif
   glm::vec3 perceived_center{ 0.0f };
   glm::vec3 keep_distance{ 0.0f };
   glm::vec3 perceived_vel{ 0.0f };
